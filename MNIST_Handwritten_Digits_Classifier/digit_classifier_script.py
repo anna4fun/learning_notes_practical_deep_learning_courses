@@ -4,7 +4,7 @@ from fastai.vision.all import *
 from fastcore.parallel import *
 import os
 from PIL import Image
-import MNIST_Handwritten_Digits_Classifier.utils.learner_and_optimizer as bmo
+import utils.learner_and_optimizer as bmo
 import gc
 import importlib
 
@@ -51,16 +51,16 @@ stacked_three.shape, stacked_seven.shape, stacked_three_valid.shape, stacked_sev
 
 # I want the train_x to be a 2-D matrix of (6131+6265, 784)
 train_x = torch.cat([stacked_three, stacked_seven]).view(-1, 28*28)
-train_x = train_x.float()
+# train_x = train_x.float()
 train_y = tensor([1]*len(stacked_three)+[0]*len(stacked_seven)).unsqueeze(1)
-train_y = train_y.float()
+# train_y = train_y.float()
 train_y[stacked_three.shape[0]-1]
 
 valid_x = torch.cat([stacked_three_valid, stacked_seven_valid]).view(-1, 28*28)
-valid_x = valid_x.float() # turn int into float, so that it can be multiplied with the float typed weights
+# valid_x = valid_x.float() # turn int into float, so that it can be multiplied with the float typed weights
 valid_x[0]
 valid_y = tensor([1]*stacked_three_valid.shape[0]+[0]*stacked_seven_valid.shape[0]).unsqueeze(1)
-valid_y = valid_y.float()
+# valid_y = valid_y.float()
 valid_y[stacked_three_valid.shape[0]]
 
 model_data = bmo.ModelData(train_x, train_y, valid_x, valid_y)
@@ -68,6 +68,7 @@ model_data = bmo.ModelData(train_x, train_y, valid_x, valid_y)
 # Many losses default to a reduction of "mean" (or "sum"), which collapses the batch and returns a single scalar value.
 # tensor.item() returns the floats saved in the tensor, which could then be rounded by round() function
 
+## Part 1: Linear Regression on All Training Data
 training_epoch_results = []
 
 # for learning_rate in [100, 150, 200]:
@@ -129,3 +130,27 @@ with torch.no_grad():
 # print(w0.grad.min(), w0.grad.max()) :tensor(-8.9067e-05) tensor(0.0002)
 
 
+## Part 2: Linear classifier with Stochastic Gradient Descent
+train_sample_index = bmo.stratified_splits_sample(train_y, 10)
+train_sample_index
+sample_0 = train_sample_index[0]
+
+# in pytorch, use DataLoader to do the random shuffling and batch splitting for you
+gc.collect()
+torch.cuda.empty_cache()
+dset = list(zip(train_x, train_y))
+valid_dset = list(zip(valid_x, valid_y))
+dl = DataLoader(dset, batch_size=256, shuffle=True)
+valid_dl = DataLoader(valid_dset, batch_size=256, shuffle=True)
+xb, yb = first(dl)
+w1 = bmo.init_params((xb.shape[1], 1))
+b1 = bmo.init_params(1)
+print(bmo.validate_one_epoch(bmo.linear1, valid_dl, w1, b1))
+# starting accuracy: 0.5104
+learning_rate = 10
+for i in range(20):
+    bmo.train_one_epoch_by_batch(bmo.linear1, bmo.mnist_loss, epoch=i,
+                                 learning_rate=learning_rate, weights=w1, bias=b1 ,
+                                 dl=dl)
+    print(bmo.validate_one_epoch(bmo.linear1, valid_dl, w1, b1))
+# Final accuracy: 0.9838 good enough

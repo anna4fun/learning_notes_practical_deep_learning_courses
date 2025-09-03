@@ -98,9 +98,16 @@ def validate_epoch(model, valid_dl):
     return round(torch.stack(accs).mean().item(),4)
 
 
-# TODO: stratified sampling from the 2 class
 def stratified_splits_sample(y, n_samples):
-    train_sample_indexes = torch.randint(0, y.shape[0], size = (n_samples,))
+    # given labels in y, randomly draw n_samples from each labels
+    # 1. how many unique labels in y, what are the indexes for each label
+    # 2. from each labels' list of indexes, draw n_samples, return a list
+    # 3. combine the selected index's list of all labels and return it
+    train_sample_indexes = {}
+    for label in y.unique():
+        idx = (y == label).all(dim=1).nonzero(as_tuple=True)[0]
+        sampled_idx = idx[torch.randperm(idx.size(0), device=idx.device)[:n_samples]]
+        train_sample_indexes[label.item()] = sampled_idx
     return train_sample_indexes
 
 def train_one_epoch(model_func, mnist_loss, data, epoch, learning_rate, weights, bias):
@@ -122,6 +129,25 @@ def train_one_epoch(model_func, mnist_loss, data, epoch, learning_rate, weights,
             'valid_accuracy': valid_accuracy.item(),
             'learning_rate': learning_rate,
             }
+
+def train_one_epoch_by_batch(model_func, mnist_loss, epoch,
+                             learning_rate, weights, bias,
+                             dl):
+    for xb, yb in dl:
+        train_pred = model_func(xb, weights, bias)
+        loss = mnist_loss(train_pred, yb)
+        loss.backward()
+        with torch.no_grad():
+            weights -= learning_rate*weights.grad
+            bias -= learning_rate*bias.grad
+
+        weights.grad.zero_()
+        bias.grad.zero_()
+
+def validate_one_epoch(model_func, valid_dl, weights, bias):
+    with torch.no_grad():
+        accs = [batch_accuracy(model_func(xb, weights, bias),yb) for xb, yb in valid_dl]
+    return round(torch.stack(accs).mean().item(), 4)
 
 ## Plots
 def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate):
