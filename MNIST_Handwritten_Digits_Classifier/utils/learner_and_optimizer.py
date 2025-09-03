@@ -123,8 +123,14 @@ def train_one_epoch(model_func, mnist_loss, data, epoch, learning_rate, weights,
             'learning_rate': learning_rate,
             }
 
-
-
-
+## Plots
+def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate):
+    plt.plot(train_loss, label="train loss")
+    plt.plot(valid_loss, label="valid loss")
+    plt.plot(valid_accuracy, label="accuracy")
+    plt.legend()
+    plt.xlabel("Step")
+    plt.ylabel("Value")
+    plt.show()
 
 

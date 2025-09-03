@@ -43,38 +43,38 @@ stacked_three = torch.stack([tensor(Image.open(o))/256 for o in threes])
 stacked_seven = torch.stack([tensor(Image.open(o))/256 for o in sevens])
 stacked_three_valid = torch.stack([tensor(Image.open(o))/256 for o in valid_threes])
 stacked_seven_valid = torch.stack([tensor(Image.open(o))/256 for o in valid_sevens])
+# stacked_three = torch.stack([tensor(Image.open(o)) for o in threes])
+# stacked_seven = torch.stack([tensor(Image.open(o)) for o in sevens])
+# stacked_three_valid = torch.stack([tensor(Image.open(o)) for o in valid_threes])
+# stacked_seven_valid = torch.stack([tensor(Image.open(o)) for o in valid_sevens])
 stacked_three.shape, stacked_seven.shape, stacked_three_valid.shape, stacked_seven_valid.shape
 
 # I want the train_x to be a 2-D matrix of (6131+6265, 784)
 train_x = torch.cat([stacked_three, stacked_seven]).view(-1, 28*28)
+train_x = train_x.float()
 train_y = tensor([1]*len(stacked_three)+[0]*len(stacked_seven)).unsqueeze(1)
+train_y = train_y.float()
 train_y[stacked_three.shape[0]-1]
 
 valid_x = torch.cat([stacked_three_valid, stacked_seven_valid]).view(-1, 28*28)
+valid_x = valid_x.float() # turn int into float, so that it can be multiplied with the float typed weights
+valid_x[0]
 valid_y = tensor([1]*stacked_three_valid.shape[0]+[0]*stacked_seven_valid.shape[0]).unsqueeze(1)
+valid_y = valid_y.float()
 valid_y[stacked_three_valid.shape[0]]
 
 model_data = bmo.ModelData(train_x, train_y, valid_x, valid_y)
-# test the validation accuracy function
-# making sure the dimensions are all correct
-w0=bmo.init_params((train_x.shape[1],1))
-b0=bmo.init_params(1)
-w0.shape, b0.shape # (torch.Size([784, 1]), torch.Size([1]))
-pred = bmo.linear1(model_data.valid_x, w0, b0)
-pred.shape
-acc = bmo.batch_accuracy(pred, model_data.valid_y)
-acc, acc.shape
-loss = bmo.mnist_loss(pred, model_data.valid_y)
-loss.shape, loss.item() # (torch.Size([]), 0.5325248837471008)
 # In PyTorch, torch.Size([]) means a 0-dim (scalar) tensor.
 # Many losses default to a reduction of "mean" (or "sum"), which collapses the batch and returns a single scalar value.
 # tensor.item() returns the floats saved in the tensor, which could then be rounded by round() function
+
 training_epoch_results = []
 
-for learning_rate in [100, 150, 200]:
+# for learning_rate in [100, 150, 200]:
+for learning_rate in [10, 15, 20]:
     gc.collect()
     torch.cuda.empty_cache()
-    weights = bmo.init_params((train_x.shape[1], 1), 10)
+    weights = bmo.init_params((train_x.shape[1], 1))
     bias = bmo.init_params(1)
     for i in range(20):
         results = bmo.train_one_epoch(bmo.linear1, bmo.mnist_loss, model_data, epoch=i,
@@ -82,6 +82,7 @@ for learning_rate in [100, 150, 200]:
         training_epoch_results.append(results)
 
 results_df = pd.DataFrame(training_epoch_results)
+results_df
 # With learning_rate = 0.1, accuracy and loss don't change much
 # weights.min(), weights.max()
 # (tensor(-38.4075, grad_fn=<MinBackward1>), tensor(33.0707, grad_fn=<MaxBackward1>))
@@ -95,14 +96,36 @@ results_df = pd.DataFrame(training_epoch_results)
 
 # saving the results for future reference
 cwd = os.getcwd()
-output_dir = cwd + '/MNIST_Handwritten_Digits_Classifier/results/digit_classifier_results.csv'
+output_dir = cwd + '/MNIST_Handwritten_Digits_Classifier/results/v2-digit_classifier_results_w_div256_scale_pixel_weights_scale1.csv'
 results_df.to_csv(output_dir, index=False)
 
-# key take aways:
-# 1. configure the dimensions of each tensors objects carefully
-# 2. check the scale of weights and gradients, if the scale differs too much, select a big learning_rate to step
-# 3. last but not least, save all the outputs with a history of all the variations that I tried for more efficient experiments
 
+# Thinking
+# 1. I think the small scale of gradients is caused by the training dataset's pixels all divided by 256, aka scale of x determine the scale of gradients
+w0=bmo.init_params((train_x.shape[1],1))
+b0=bmo.init_params(1)
+w0.shape, b0.shape # (torch.Size([784, 1]), torch.Size([1]))
 
+pred = bmo.linear1(model_data.valid_x, w0, b0)
+pred.shape
+acc = bmo.batch_accuracy(pred, model_data.valid_y)
+acc, acc.shape
+loss = bmo.mnist_loss(pred, model_data.valid_y)
+loss.shape, loss.item() # (torch.Size([]), 0.5325248837471008)
+loss.backward()
+with torch.no_grad():
+    print(w0.grad.min(), w0.grad.max()) # tensor(-0.0333) tensor(0.0060)
+    print(w0.min(), w0.max()) # tensor(-3.2619) tensor(2.7059)
+## with div 256 training data, initial weights takes scale=1
+# print(w0.min(), w0.max()) : tensor(-3.2767) tensor(3.1964)
+# print(w0.grad.min(), w0.grad.max()): tensor(-0.0208) tensor(0.0131)
+
+## with original big training data, initial weights takes scale=1
+# print(w0.min(), w0.max()) # tensor(-3.2619) tensor(2.7059)
+# print(w0.grad.min(), w0.grad.max()) # tensor(-0.0333) tensor(0.0060)
+
+## with original big training data, initial weights takes scale=10
+# print(w0.min(), w0.max()) = tensor(-30.2107) tensor(32.5220)
+# print(w0.grad.min(), w0.grad.max()) :tensor(-8.9067e-05) tensor(0.0002)
 
 
