@@ -37,6 +37,16 @@ def show_image(image_tensor):
     plt.axis('off')
     plt.show()
 
+## Plotting the training stats, train loss, valid loss and valid accuracy
+def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate):
+    plt.plot(train_loss, label="train loss")
+    plt.plot(valid_loss, label="valid loss")
+    plt.plot(valid_accuracy, label="accuracy")
+    plt.legend()
+    plt.xlabel("Step")
+    plt.ylabel("Value")
+    plt.show()
+
 def file_size(image):
     return PILImage.create(image).size
 
@@ -149,14 +159,27 @@ def validate_one_epoch(model_func, valid_dl, weights, bias):
         accs = [batch_accuracy(model_func(xb, weights, bias),yb) for xb, yb in valid_dl]
     return round(torch.stack(accs).mean().item(), 4)
 
-## Plots
-def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate):
-    plt.plot(train_loss, label="train loss")
-    plt.plot(valid_loss, label="valid loss")
-    plt.plot(valid_accuracy, label="accuracy")
-    plt.legend()
-    plt.xlabel("Step")
-    plt.ylabel("Value")
-    plt.show()
+# textbook, the model_func here is a nn.Learner object that contains the weights and bias
+def validate_epoch(model_func, valid_dl):
+    with torch.no_grad():
+        accs = [batch_accuracy(model_func(xb),yb) for xb, yb in valid_dl]
+    return round(torch.stack(accs).mean().item(), 4)
+
+class BasicOptim:
+    def __init__(self, params, lr):
+        self.params = list(params)
+        self.lr = lr
+
+    def zero_grad(self, *args, **kwargs):
+        # remove the gradients so it doesn't accumulate to next iteration
+        for p in self.params: p.grad = None
+
+    def step(self, *args, **kwargs):
+        # updates params without tracking in autograd
+        with torch.no_grad():
+            for p in self.params:
+                p -= self.lr*p.grad
+        # for p in self.params: p.data -=self.lr*p.grad.data (this is Old style)
+
 
 

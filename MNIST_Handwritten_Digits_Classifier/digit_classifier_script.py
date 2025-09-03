@@ -154,3 +154,33 @@ for i in range(20):
                                  dl=dl)
     print(bmo.validate_one_epoch(bmo.linear1, valid_dl, w1, b1))
 # Final accuracy: 0.9838 good enough
+
+## Part 3. Create an Optimizer
+# 1. use nn.linear to combine init_params and linear1 together
+train_x.shape[1]
+linear_model = nn.Linear(train_x.shape[1], 1)
+type(linear_model) # <class 'torch.nn.modules.linear.Linear'>
+# what does linear_model do?
+test_result = linear_model(train_x) # it's doing train_x@weights + bias
+test_result.shape # torch.Size([12396, 1])
+# what's in the paramaters
+w,b = linear_model.parameters()
+w.mean(), w.std() # (tensor(-0.0010, grad_fn=<MeanBackward0>), tensor(0.0200, grad_fn=<StdBackward0>))
+
+# call the optimizer class
+opt = bmo.BasicOptim(params=linear_model.parameters(), lr=10)
+
+def train_epoch(model):
+    for xb, yb in dl:
+        bmo.calc_grad(model, xb, yb)
+        opt.step()
+        opt.zero_grad()
+
+print(bmo.validate_epoch(linear_model, valid_dl)) # 0.3853
+
+def train_model(model, epoch):
+    for i in range(epoch):
+        train_epoch(model)
+        print(bmo.validate_epoch(model, valid_dl))
+
+train_model(linear_model, epoch=20) # last accuracy: 0.9848
