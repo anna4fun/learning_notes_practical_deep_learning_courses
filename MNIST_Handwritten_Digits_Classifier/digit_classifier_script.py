@@ -10,6 +10,8 @@ import importlib
 
 importlib.reload(bmo)
 
+
+# ========================================================================================
 # import MNIST dataset
 # URLs is an object that stores all the URLs of datasets, in this tutorial we are going to use the  MNIST_SAMPLE and MINIST_TINY
 # let's define lists of path to images which will be used for data loading
@@ -20,11 +22,13 @@ threes = (path/'train'/'3').ls().sorted()
 valid_sevens = (path/'valid'/'7').ls().sorted()
 valid_threes = (path/'valid'/'3').ls().sorted()
 
+# ========================================================================================
+## Prep 1: Sanity Checks
 # How many images are there?
 print(len(threes)) # 6131
 print(len(sevens)) # 6265
 
-# Sanity check 1: randomly pick one images from each set to eye-ball the validity of the image
+# randomly pick one images from each set to eyeball the validity of the image
 m3t = tensor(Image.open(threes[np.random.randint(len(threes))]))
 # print_image_as_pixel(m3t)
 show_image(m3t)
@@ -32,13 +36,23 @@ m7t = tensor(Image.open(sevens[np.random.randint(len(sevens))]))
 # print_image_as_pixel(m7t)
 show_image(m7t)
 
-# Sanity check 2: all images of the same size? pass the file path to the get_image_files() func
+# Are all images of the same size? pass the file path to the get_image_files() func
+# same size training data is important to make GPU happy
 train_files = get_image_files(path/'train')
 train_file_size = parallel(bmo.file_size, train_files, n_workers=10)
 file_sizes = pd.Series(train_file_size).value_counts() # (28, 28)    12396
 
+## Prep 2: The data structure of organizing training and validation data
+# basic unit: a tensor
 # Loading the training and validation images into DataSets
 # Use stack to turn nested list into a rank-3 tensor. Because the nested list still not easy to iterate and average each images.
+# Noted that GPU computing default datatype is *Float*
+# GPUs (especially with CUDA/cuDNN) are optimized for floating-point math:
+# FP32 (float32) is the default training datatype.
+# Many models now use FP16 (half precision) or bfloat16 for faster matrix multiplies.
+# The GPU doesn’t really “prefer” big or small numbers — what matters is keeping them in a numerically stable range that avoids overflow or underflow.
+# So here, the original pixel values are int range up to 256, let's downsize it by dividing it with 256
+# this will (1) make it float (2) avoid overflow after the linear activation
 stacked_three = torch.stack([tensor(Image.open(o))/256 for o in threes])
 stacked_seven = torch.stack([tensor(Image.open(o))/256 for o in sevens])
 stacked_three_valid = torch.stack([tensor(Image.open(o))/256 for o in valid_threes])
@@ -47,26 +61,19 @@ stacked_three.shape, stacked_seven.shape, stacked_three_valid.shape, stacked_sev
 
 # I want the train_x to be a 2-D matrix of (6131+6265, 784)
 train_x = torch.cat([stacked_three, stacked_seven]).view(-1, 28*28)
-# train_x = train_x.float()
 train_y = tensor([1]*len(stacked_three)+[0]*len(stacked_seven)).unsqueeze(1)
-# train_y = train_y.float()
 train_y[stacked_three.shape[0]-1]
-
 valid_x = torch.cat([stacked_three_valid, stacked_seven_valid]).view(-1, 28*28)
-# valid_x = valid_x.float() # turn int into float, so that it can be multiplied with the float typed weights
 valid_x[0]
 valid_y = tensor([1]*stacked_three_valid.shape[0]+[0]*stacked_seven_valid.shape[0]).unsqueeze(1)
-# valid_y = valid_y.float()
 valid_y[stacked_three_valid.shape[0]]
 
+# Packing all the data into one model_data to be passed into training function
 model_data = bmo.ModelData(train_x, train_y, valid_x, valid_y)
-# In PyTorch, torch.Size([]) means a 0-dim (scalar) tensor.
-# Many losses default to a reduction of "mean" (or "sum"), which collapses the batch and returns a single scalar value.
-# tensor.item() returns the floats saved in the tensor, which could then be rounded by round() function
 
+# ========================================================================================
 ## Part 1: Linear Regression on All Training Data
 training_epoch_results = []
-
 # for learning_rate in [100, 150, 200]:
 for learning_rate in [10, 15, 20]:
     gc.collect()
@@ -90,19 +97,20 @@ results_df
 # after updating the lr = 100, the accuracy goes from 0.5 to 0.87 within 20 epoch
 # I experimented 3 learning_rates 100, 150, 200,
 # found out that learning_rate = 150 able to achieve the highest accuracy 0.92 at epoch=20
+# I further downsize the weights from scale = 10 into scale = 1,
+# then use learning_rate at [10,15,20] gives similar results.
 
-# saving the results for future reference
+# Note: All results are saved under the `results` folder
 cwd = os.getcwd()
 output_dir = cwd + '/MNIST_Handwritten_Digits_Classifier/results/v2-digit_classifier_results_w_div256_scale_pixel_weights_scale1.csv'
 results_df.to_csv(output_dir, index=False)
-
 
 # Thinking
 # 1. I think the small scale of gradients is caused by the training dataset's pixels all divided by 256, aka scale of x determine the scale of gradients
 w0=bmo.init_params((train_x.shape[1],1))
 b0=bmo.init_params(1)
+# shape checking, don't make pred in the shape of (786,10) LOL
 w0.shape, b0.shape # (torch.Size([784, 1]), torch.Size([1]))
-
 pred = bmo.linear1(model_data.valid_x, w0, b0)
 pred.shape
 acc = bmo.batch_accuracy(pred, model_data.valid_y)
@@ -125,7 +133,7 @@ with torch.no_grad():
 # print(w0.min(), w0.max()) = tensor(-30.2107) tensor(32.5220)
 # print(w0.grad.min(), w0.grad.max()) :tensor(-8.9067e-05) tensor(0.0002)
 
-
+# ========================================================================================
 ## Part 2: Linear classifier with Stochastic Gradient Descent
 train_sample_index = bmo.stratified_splits_sample(train_y, 10)
 train_sample_index
@@ -151,6 +159,7 @@ for i in range(20):
     print(bmo.validate_one_epoch(bmo.linear1, valid_dl, w1, b1))
 # Final accuracy: 0.9838 good enough
 
+# ========================================================================================
 ## Part 3. Create an Optimizer
 # 3.1 use nn.linear to combine init_params and linear1 together
 train_x.shape[1]
@@ -185,6 +194,7 @@ def train_model(model, epoch):
 
 train_model(linear_model, epoch=20) # last accuracy: 0.9848
 
+# ========================================================================================
 # Part 4. Here comes my Learner
 # It's interesting to see that a Learner,at the time of definition, contains
 # (1) the train and validation data wrapped in DataLoaders (s)

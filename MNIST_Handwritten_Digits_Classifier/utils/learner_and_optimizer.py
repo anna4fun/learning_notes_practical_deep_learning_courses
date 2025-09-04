@@ -12,7 +12,7 @@ for dirname, _, filenames in os.walk('/kaggle/input'):
         print(os.path.join(dirname, filename))
 
 
-# helper functions for showing an image
+# Helper functions for showing an image
 def print_image_as_pixel(image_tensor, decimal=2):
     # only works in Jupyter env
     tdf = pd.DataFrame(image_tensor)
@@ -22,7 +22,6 @@ def print_image_as_pixel(image_tensor, decimal=2):
     return (styler
             .set_properties(**{'font-size':'7pt'})
             .background_gradient(cmap='Greys'))
-
 
 def show_image(image_tensor):
     # works in Python console
@@ -38,7 +37,10 @@ def show_image(image_tensor):
     plt.axis('off')
     plt.show()
 
-## Plotting the training stats, train loss, valid loss and valid accuracy
+def file_size(image):
+    return PILImage.create(image).size
+
+# Plotting the training stats, train loss, valid loss and valid accuracy
 def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate):
     plt.plot(train_loss, label="train loss")
     plt.plot(valid_loss, label="valid loss")
@@ -48,9 +50,8 @@ def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate)
     plt.ylabel("Value")
     plt.show()
 
-def file_size(image):
-    return PILImage.create(image).size
-
+# My own "DataLoader" class that load all the train and validation data
+# for easy passing to my train_one_epoch function
 class ModelData:
     # this is the class that saves all the data of training and validation set
     def __init__(self, train_x, train_y, valid_x, valid_y):
@@ -59,10 +60,10 @@ class ModelData:
         self.valid_x = valid_x
         self.valid_y = valid_y
 
-# A linear layer
+# A linear activation layer
 # 1. initialize params with gradient tracking
 # 2. define loss, for classifications it's a 4-step,
-## step 1 pred=x@weights + bias, the pred can any range
+## step 1 pred=x@weights + bias, the pred can any range, this is the activation
 ## step 2 sigmoid_pred = sigmoid(pred), the sigmoid_pred range (0,1), we read this as "the confidence of this image should be a labelled 1"
 ## step 3 loss = torch.where(y==1, 1-sigmoid_pred, sigmoid_pred)
 ## step 4 loss.mean(), report loss at this epoch
@@ -71,24 +72,33 @@ class ModelData:
 # 5. calc validation set loss, prediction and accuracy of this epoch, save it
 # 6. set gradients to zero and go back to 2.
 # plus, the functions should have lr and number of samples as changeable variables.
-
-
 def init_params(dim, scale=1):
     # initialize parameters with random numbers draw from Standard Normal Distribution with desgined dim (tuple)
+    # the weights should not be too large or too small, it will cause the
     return (torch.randn(dim)*scale).requires_grad_()
 
 def linear1(x, weights, bias):
+    # the simple linear regression activation
     return x@weights+bias
 
+# For updating params with training set
 def mnist_loss(pred, y):
+    # for classification problem, prediction needs to be mapped to range (0,1)
+    # this loss means: the average probability of making wrong predictions
     sig_pred = sigmoid(pred)
     return torch.where(y==1, 1-sig_pred, sig_pred).mean()
+    # In PyTorch, torch.Size([]) means a 0-dim (scalar) tensor.
+    # Many losses default to a reduction of "mean" (or "sum"), which collapses the batch and returns a single scalar value.
 
 def calc_grad(model, x, y):
+    # calculate gradients with the mnist_loss and activations
+    # Warning: this includes the loss function, could not be used in MSE loss scenarios
     preds = model(x)
-    loss = mnist_loss(preds, y) # the average probability of making wrong predictions
+    loss = mnist_loss(preds, y)
     loss.backward()
 
+# For calculating loss and accuracy of validation set
+# my version to calculate accuracy metrics of validation set
 def class_accuracy(pred, y):
     # class of pred is 1 or 0, compare with y which is also 1 or 0
     # my version:
@@ -97,18 +107,21 @@ def class_accuracy(pred, y):
     # so y and pred are never going to be equal, of course the accuracy would be 0
     return 1.0*(y == pred).sum() / len(y)
 
-
+# the textbook version of accuracy metrics
 def batch_accuracy(pred, y):
     pred = sigmoid(pred)
     correct = (pred >=0.5).int() == y
+    # if I am more careful, I would add the (1) dimension checks and (2) int/float type checks here
     return correct.float().mean()
 
 def validate_epoch(model, valid_dl):
-    # b stands for batch, every batch will contains some portion of the total training set
+    # b stands for batch, every batch will contain some portion of the total training set
     accs = [batch_accuracy(model(xb),yb) for xb, yb in valid_dl]
     return round(torch.stack(accs).mean().item(),4)
+    # tensor.item() returns the floats saved in the tensor, which could then be rounded by round() function
 
-
+# my own function for doing equal sampling from different labels
+# In SGD, I think we should avoid only sampling 1 label in one epoch
 def stratified_splits_sample(y, n_samples):
     # given labels in y, randomly draw n_samples from each labels
     # 1. how many unique labels in y, what are the indexes for each label
@@ -121,6 +134,7 @@ def stratified_splits_sample(y, n_samples):
         train_sample_indexes[label.item()] = sampled_idx
     return train_sample_indexes
 
+# my own function for GD with all training data in one iteration and calc the validation loss and accuracy
 def train_one_epoch(model_func, mnist_loss, data, epoch, learning_rate, weights, bias):
     # model: could be linear or non-linear; data is the ModelData class
     train_pred = model_func(data.train_x, weights, bias)
@@ -141,9 +155,9 @@ def train_one_epoch(model_func, mnist_loss, data, epoch, learning_rate, weights,
             'learning_rate': learning_rate,
             }
 
+# textbook
 def train_one_epoch_by_batch(model_func, mnist_loss, epoch,
-                             learning_rate, weights, bias,
-                             dl):
+                             learning_rate, weights, bias, dl):
     for xb, yb in dl:
         train_pred = model_func(xb, weights, bias)
         loss = mnist_loss(train_pred, yb)
@@ -151,7 +165,6 @@ def train_one_epoch_by_batch(model_func, mnist_loss, epoch,
         with torch.no_grad():
             weights -= learning_rate*weights.grad
             bias -= learning_rate*bias.grad
-
         weights.grad.zero_()
         bias.grad.zero_()
 
@@ -165,7 +178,6 @@ def validate_epoch(model_func, valid_dl):
     with torch.no_grad():
         accs = [batch_accuracy(model_func(xb),yb) for xb, yb in valid_dl]
     return round(torch.stack(accs).mean().item(), 4)
-
 
 # my own SGD optimizer without momentum
 class BasicOptimSGD():
