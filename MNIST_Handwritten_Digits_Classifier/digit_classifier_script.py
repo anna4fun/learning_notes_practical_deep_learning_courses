@@ -7,6 +7,7 @@ from PIL import Image
 import utils.learner_and_optimizer as bmo
 import gc
 import importlib
+from matplotlib import pyplot as plt
 
 importlib.reload(bmo)
 
@@ -206,9 +207,12 @@ train_model(linear_model, epoch=20) # last accuracy: 0.9848
 dls = DataLoaders(dl, valid_dl) # "s" plural
 
 # 4.1 with fastai built-in SGD optimizer
-learn = Learner(dls, nn.Linear(28*28,1), opt_func=SGD,
+lr_learn = Learner(dls, nn.Linear(28*28,1), opt_func=SGD,
                 loss_func=bmo.mnist_loss, metrics=bmo.batch_accuracy)
-learn.fit(10, lr=1)
+epoch = 10
+lr = 1
+lr_learn.fit(epoch, lr=lr)
+bmo.plot_epoch_stats(plt,  epoch, lr, "Simple Linear Classifier", lr_learn).savefig("training_results_linearReg.png", dpi=300, bbox_inches="tight")
 '''
 epoch     train_loss  valid_loss  batch_accuracy  time    
 0         0.058305    0.041626    0.969578        00:00     
@@ -219,13 +223,51 @@ epoch     train_loss  valid_loss  batch_accuracy  time
 # cannot call the BasicOptimSGD directly, it's incompatible with fastai's Learner module
 # it causes error "AttributeError: 'BasicOptim' object has no attribute 'state'"
 # so I need to wrap BasicOptimSGD into the fastiai's Optimizer
-learn = Learner(dls, nn.Linear(28*28,1),
+lr_learn = Learner(dls, nn.Linear(28*28,1),
                 opt_func=bmo.BasicOptimSGDInherit,
                 loss_func=bmo.mnist_loss, metrics=bmo.batch_accuracy)
-learn.fit(10, lr=1)
+epoch = 10
+lr = 1
+lr_learn.fit(epoch, lr=lr)
+bmo.plot_epoch_stats(plt,  epoch, lr, "Simple Linear Classifier (BMO Optimizer)", lr_learn).savefig("training_results_linearReg_bmo_opt.png", dpi=300, bbox_inches="tight")
 '''
 epoch     train_loss  valid_loss  batch_accuracy  time    
 0         0.058504    0.041645    0.970069        00:00     
 ...
 9         0.020160    0.024613    0.980373        00:00     
+'''
+
+# ========================================================================================
+## Part 5: A simple Neural Network with Linear and Relu layers
+gc.collect()
+torch.cuda.empty_cache()
+
+simple_net = nn.Sequential(nn.Linear(28*28,30),
+                           nn.ReLU(),
+                           nn.Linear(30,1))
+nnlearn = Learner(dls, simple_net, opt_func=SGD,
+                  loss_func=bmo.mnist_loss, metrics=bmo.batch_accuracy)
+
+# fit epoch = 40, lr = 1
+epoch = 40
+lr = 1
+nnlearn.fit(epoch, lr)
+bmo.plot_epoch_stats(plt,  epoch, lr, "Simple Neural Net", nnlearn).savefig("training_results.png", dpi=300, bbox_inches="tight")
+'''
+epoch     train_loss  valid_loss  batch_accuracy  time    
+0         0.054991    0.030774    0.974485        00:00     
+... 
+39        0.007313    0.015832    0.984789        00:00     
+'''
+# fit epoch = 40, lr = 1
+epoch = 40
+lr = 1
+nnlearn.fit(epoch, lr)
+# Extract recorder values
+bmo.plot_epoch_stats(plt,  epoch, lr, "Simple Neural Net", nnlearn).savefig("training_results2.png", dpi=300, bbox_inches="tight")
+'''
+epoch     train_loss  valid_loss  batch_accuracy  time    
+0         0.007097    0.016058    0.985280        00:00     
+...  
+19        0.006910    0.016168    0.983808        00:00     
 '''

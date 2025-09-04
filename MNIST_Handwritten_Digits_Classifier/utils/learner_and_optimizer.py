@@ -41,14 +41,45 @@ def file_size(image):
     return PILImage.create(image).size
 
 # Plotting the training stats, train loss, valid loss and valid accuracy
-def plot_epoch_stats(plt, train_loss, valid_loss, valid_accuracy, learning_rate):
-    plt.plot(train_loss, label="train loss")
-    plt.plot(valid_loss, label="valid loss")
-    plt.plot(valid_accuracy, label="accuracy")
-    plt.legend()
-    plt.xlabel("Step")
-    plt.ylabel("Value")
-    plt.show()
+def plot_epoch_stats(plt, epoch_num, lr, learner_name, learner):
+    train_loss = L(learner.recorder.values).itemgot(0)
+    valid_loss = L(learner.recorder.values).itemgot(1)
+    valid_acc = L(learner.recorder.values).itemgot(2)
+    # Find best epoch (based on highest validation accuracy)
+    best_epoch = int(np.argmax(valid_acc))
+    best_acc = valid_acc[best_epoch]
+
+    # Create 3 horizontal subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    axes[0].plot(train_loss)
+    axes[0].set_title("Training Loss")
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Loss")
+    axes[0].grid(True)
+
+    axes[1].plot(valid_loss)
+    axes[1].set_title("Validation Loss")
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Loss")
+    axes[1].axvline(best_epoch, color="red", linestyle="--", label=f"Best Epoch {best_epoch}")
+    axes[1].grid(True)
+
+    axes[2].plot(valid_acc)
+    axes[2].set_title("Validation Accuracy")
+    axes[2].set_xlabel("Epoch")
+    axes[2].set_ylabel("Accuracy")
+    axes[2].axvline(best_epoch, color="red", linestyle="--")
+    axes[2].plot(best_epoch, best_acc, "ro", label=f"Best Acc {best_acc:.2f}")
+    axes[2].legend()
+    axes[2].grid(True)
+
+    # Add a global figure title
+    fig.suptitle(f"{learner_name} Training Results (Epochs={epoch_num}, Learning Rate={lr})", fontsize=16)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    return plt
+
 
 # My own "DataLoader" class that load all the train and validation data
 # for easy passing to my train_one_epoch function

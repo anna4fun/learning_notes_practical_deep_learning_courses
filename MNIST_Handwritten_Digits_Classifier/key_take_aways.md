@@ -13,4 +13,19 @@ and plays nicely with optimizers like SGD/Adam.
 
 5. Be mindful about the Pytorch Autograd feature, it automatically record all operations on your weights tensors in the computation graph. We only want the loss function to be recorded in the computation graph for calculating gradients. Therefore, in all other places such as updating the weights and calculating the loss of validation set, put them inside `torch.no_grad()` to pause the gradients tracking.
 
-6. last but not least, save all the outputs with a history of all the variations that I tried for more efficient experiments
+6. last but not least, save all the outputs with a history of all the variations that I tried for more efficient experiments, let's look at the results
+
+#### Linear regression with built-in SGD optimizer
+![simple lr 1](results/training_results_linearReg.png)
+
+#### Linear regression with my own SGD optimizer
+![simple lr 2](results/training_results_linearReg_bmo_opt.png)
+
+#### 3-layer Neural Net with ReLu as middle layer non-linear activation with different learning rates and epoch
+![simple nn 1](results/training_results.png)
+![simple nn 2](results/training_results2.png)
+
+#### ❗❗❗ Why are the validation loss so zig-zag in the 2 NN training cycles? It looks pretty smooth in simple Linear Regression cycles.
+Also, the validation accuracy of NN is jumping within very small ranges (0.984, 0.985), is that normal?
+
+
