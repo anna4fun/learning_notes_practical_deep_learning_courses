@@ -43,10 +43,6 @@ stacked_three = torch.stack([tensor(Image.open(o))/256 for o in threes])
 stacked_seven = torch.stack([tensor(Image.open(o))/256 for o in sevens])
 stacked_three_valid = torch.stack([tensor(Image.open(o))/256 for o in valid_threes])
 stacked_seven_valid = torch.stack([tensor(Image.open(o))/256 for o in valid_sevens])
-# stacked_three = torch.stack([tensor(Image.open(o)) for o in threes])
-# stacked_seven = torch.stack([tensor(Image.open(o)) for o in sevens])
-# stacked_three_valid = torch.stack([tensor(Image.open(o)) for o in valid_threes])
-# stacked_seven_valid = torch.stack([tensor(Image.open(o)) for o in valid_sevens])
 stacked_three.shape, stacked_seven.shape, stacked_three_valid.shape, stacked_seven_valid.shape
 
 # I want the train_x to be a 2-D matrix of (6131+6265, 784)
@@ -156,7 +152,7 @@ for i in range(20):
 # Final accuracy: 0.9838 good enough
 
 ## Part 3. Create an Optimizer
-# 1. use nn.linear to combine init_params and linear1 together
+# 3.1 use nn.linear to combine init_params and linear1 together
 train_x.shape[1]
 linear_model = nn.Linear(train_x.shape[1], 1)
 type(linear_model) # <class 'torch.nn.modules.linear.Linear'>
@@ -166,17 +162,21 @@ test_result.shape # torch.Size([12396, 1])
 # what's in the paramaters
 w,b = linear_model.parameters()
 w.mean(), w.std() # (tensor(-0.0010, grad_fn=<MeanBackward0>), tensor(0.0200, grad_fn=<StdBackward0>))
+# we can directly call the validate_epoch,
+# here the `linear_model` contains the (1) prediction formula (2)params
+print(bmo.validate_epoch(linear_model, valid_dl)) # 0.3853
 
-# call the optimizer class
-opt = bmo.BasicOptim(params=linear_model.parameters(), lr=10)
+# 3.2 call the optimizer class
+opt = bmo.BasicOptimSGD(params=linear_model.parameters(), lr=10)
+type(opt) # <class 'utils.learner_and_optimizer.BasicOptim'>
 
+# 3.3 simplified the train epoch and train model parts
+# the following 2 functions are a simplified version of my own `train_one_epoch` function
 def train_epoch(model):
     for xb, yb in dl:
         bmo.calc_grad(model, xb, yb)
-        opt.step()
+        opt.step() # an in-place updates to the params of the opt object
         opt.zero_grad()
-
-print(bmo.validate_epoch(linear_model, valid_dl)) # 0.3853
 
 def train_model(model, epoch):
     for i in range(epoch):
@@ -184,3 +184,38 @@ def train_model(model, epoch):
         print(bmo.validate_epoch(model, valid_dl))
 
 train_model(linear_model, epoch=20) # last accuracy: 0.9848
+
+# Part 4. Here comes my Learner
+# It's interesting to see that a Learner,at the time of definition, contains
+# (1) the train and validation data wrapped in DataLoaders (s)
+# (2) prediction model containing the activations and the parameters;
+# (3) optimizer;
+# (4) the loss function;
+# (5) the evaluation metrics of the validation set
+# The Learner is very compact. We can only use 3 lines of code to complete the training.
+dls = DataLoaders(dl, valid_dl) # "s" plural
+
+# 4.1 with fastai built-in SGD optimizer
+learn = Learner(dls, nn.Linear(28*28,1), opt_func=SGD,
+                loss_func=bmo.mnist_loss, metrics=bmo.batch_accuracy)
+learn.fit(10, lr=1)
+'''
+epoch     train_loss  valid_loss  batch_accuracy  time    
+0         0.058305    0.041626    0.969578        00:00     
+...  
+9         0.020154    0.024984    0.979882        00:00     
+'''
+# 4.2 with my own optimizer + modification
+# cannot call the BasicOptimSGD directly, it's incompatible with fastai's Learner module
+# it causes error "AttributeError: 'BasicOptim' object has no attribute 'state'"
+# so I need to wrap BasicOptimSGD into the fastiai's Optimizer
+learn = Learner(dls, nn.Linear(28*28,1),
+                opt_func=bmo.BasicOptimSGDInherit,
+                loss_func=bmo.mnist_loss, metrics=bmo.batch_accuracy)
+learn.fit(10, lr=1)
+'''
+epoch     train_loss  valid_loss  batch_accuracy  time    
+0         0.058504    0.041645    0.970069        00:00     
+...
+9         0.020160    0.024613    0.980373        00:00     
+'''

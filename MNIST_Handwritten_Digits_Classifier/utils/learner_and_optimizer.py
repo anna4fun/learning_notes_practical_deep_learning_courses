@@ -2,6 +2,7 @@ import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 from fastai.vision.all import *
 from fastcore.parallel import *
+from fastai.optimizer import Optimizer
 import os
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -165,7 +166,9 @@ def validate_epoch(model_func, valid_dl):
         accs = [batch_accuracy(model_func(xb),yb) for xb, yb in valid_dl]
     return round(torch.stack(accs).mean().item(), 4)
 
-class BasicOptim:
+
+# my own SGD optimizer without momentum
+class BasicOptimSGD():
     def __init__(self, params, lr):
         self.params = list(params)
         self.lr = lr
@@ -181,5 +184,15 @@ class BasicOptim:
                 p -= self.lr*p.grad
         # for p in self.params: p.data -=self.lr*p.grad.data (this is Old style)
 
+# the BasicOptimSGD cannot be directly called by the Learner object provided by fastai
+# So I create a new one that inherit the fastai's Optimizer
+class BasicOptimSGDInherit(Optimizer):
+    def __init__(self, params, lr):
+        super().__init__(params, lr)
 
+    def step(self):
+        for group in self.param_groups:          # each group is a dict
+            for p in group['params']:            # the actual tensors
+                if p.grad is not None:
+                    p.data -= group['lr'] * p.grad.data
 
