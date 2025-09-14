@@ -324,3 +324,47 @@ def validate_one_epoch_3layer(linear_act, non_linear_act, params, valid_dl):
                                     yb.long().as_subclass(torch.Tensor), reduction='mean')
                     for xb, yb in valid_dl]
     return round(torch.stack(loss_agg).mean().item(), 4)
+
+
+import numbers
+import matplotlib.pyplot as plt
+
+def _to_float(x):
+    # Works for plain numbers, torch scalars (x.item), numpy scalars, etc.
+    if hasattr(x, "item"):
+        try:
+            return float(x.item())
+        except Exception:
+            pass
+    if isinstance(x, numbers.Number):
+        return float(x)
+    return float(str(x))
+
+def _to_epoch(k):
+    # Prefer int→float→string (so 1, "1", 1.0 all sort correctly)
+    try:
+        return int(k)
+    except Exception:
+        try:
+            return float(k)
+        except Exception:
+            return str(k)
+
+def plot_losses(train_losses: dict, valid_losses: dict, title="Training & Validation Loss"):
+    # Convert & sort
+    tr = sorted(((_to_epoch(k), _to_float(v)) for k, v in train_losses.items()), key=lambda t: (isinstance(t[0], str), t[0]))
+    va = sorted(((_to_epoch(k), _to_float(v)) for k, v in valid_losses.items()), key=lambda t: (isinstance(t[0], str), t[0]))
+
+    tr_x, tr_y = zip(*tr) if tr else ([], [])
+    va_x, va_y = zip(*va) if va else ([], [])
+
+    # Plot (one chart, default colors)
+    plt.figure(figsize=(8, 5))
+    if tr_x: plt.plot(tr_x, tr_y, label="Train loss")
+    if va_x: plt.plot(va_x, va_y, label="Valid loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()

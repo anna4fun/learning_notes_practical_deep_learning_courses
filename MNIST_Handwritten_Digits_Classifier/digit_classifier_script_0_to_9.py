@@ -81,9 +81,22 @@ for xb, yb in dls.train:
     train_losses[str(batch)] = bmo.train_one_epoch_3layer(bmo.linear1, torch.relu, parameters, lr=10, xb=xb.view(-1, 28*28), yb=yb)
     valid_losses[str(batch)] = bmo.validate_one_epoch_3layer(bmo.linear1, torch.relu, parameters, dls.valid)
 
+# running for too long (>40mins) so I interpted it
+batch # 412
+train_losses
+valid_losses
+valid_predict_label = []
+valid_ground_truth = []
 with torch.no_grad():
-    valid_act = bmo.three_layer_nn(bmo.linear1, torch.relu, parameters, xb.view(-1, 28 * 28)).as_subclass(torch.Tensor)
+    for xb, yb in dls.valid:
+        valid_label = bmo.three_layer_nn(bmo.linear1, torch.relu, parameters, xb.view(-1, 28 * 28)).argmax(dim=1).view(-1)
+        valid_predict_label.extend(valid_label)
+        valid_ground_truth.extend(yb)
 
+bmo.plot_losses(train_losses, valid_losses)
+plt.show()
+plt.savefig("10-digits-training-loss_curve_01.png", dpi=200, bbox_inches="tight")
+valid_predict_label # all of them are predicted to be 8, which is not good
 # simple_net = nn.Sequential(nn.Linear(28*28,50),
 #                            nn.ReLU(),
 #                            nn.Linear(50,10))
