@@ -94,8 +94,7 @@ with torch.no_grad():
         valid_ground_truth.extend(yb)
 
 bmo.plot_losses(train_losses, valid_losses)
-plt.show()
-plt.savefig("10-digits-training-loss_curve_01.png", dpi=200, bbox_inches="tight")
+plt.savefig("MNIST_Handwritten_Digits_Classifier/results/10-digits-training-loss_curve_01.png", dpi=200, bbox_inches="tight")
 valid_predict_label # all of them are predicted to be 8, which is not good
 # simple_net = nn.Sequential(nn.Linear(28*28,50),
 #                            nn.ReLU(),
