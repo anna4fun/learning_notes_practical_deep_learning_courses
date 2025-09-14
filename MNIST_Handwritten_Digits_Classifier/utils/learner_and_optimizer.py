@@ -1,5 +1,6 @@
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import torch
 from fastai.vision.all import *
 from fastcore.parallel import *
 from fastai.optimizer import Optimizer
@@ -239,3 +240,87 @@ class BasicOptimSGDInherit(Optimizer):
                 if p.grad is not None:
                     p.data -= group['lr'] * p.grad.data
 
+# a class that register the parameters (by myself) - not working
+class all_params(nn.Module):
+    def __init__(self, w1, w2, b1, b2):
+        super(all_params, self).__init__()
+        self.w1 = w1
+        self.b1 = b1
+        self.w2 = w2
+        self.b2 = b2
+
+# a class that register the parameters (by gpt)
+class AllParams(nn.Module):
+    """
+    2-layer MLP params container: (x -> w1,b1 -> ReLU -> w2,b2).
+    Creates leaf tensors with requires_grad=True and good inits.
+    """
+    def __init__(self, d_in, d_hidden, d_out, *, device=None, dtype=None, init="kaiming"):
+        super().__init__()
+        # allocate
+        self.w1 = nn.Parameter(torch.empty(d_in, d_hidden, device=device, dtype=dtype))
+        self.b1 = nn.Parameter(torch.zeros(d_hidden,      device=device, dtype=dtype))
+        self.w2 = nn.Parameter(torch.empty(d_hidden, d_out, device=device, dtype=dtype))
+        self.b2 = nn.Parameter(torch.zeros(d_out,          device=device, dtype=dtype))
+        # init
+        self.reset_parameters(init)
+
+    def reset_parameters(self, init="kaiming"):
+        if init == "kaiming":
+            nn.init.kaiming_uniform_(self.w1, a=0.0, mode="fan_in", nonlinearity="relu")
+            nn.init.kaiming_uniform_(self.w2, a=0.0, mode="fan_in", nonlinearity="relu")
+        elif init == "xavier":
+            nn.init.xavier_uniform_(self.w1)
+            nn.init.xavier_uniform_(self.w2)
+        else:
+            nn.init.normal_(self.w1, mean=0.0, std=0.02)
+            nn.init.normal_(self.w2, mean=0.0, std=0.02)
+        # biases are already zeros (often fine)
+
+    @classmethod
+    def from_tensors(cls, w1, b1, w2, b2):
+        """
+        If you *already* have tensors (even if they were created via ops),
+        wrap them as fresh leaf Parameters safely.
+        """
+        d_in, d_hidden = w1.shape
+        _, d_out       = w2.shape
+        obj = cls.__new__(cls)          # bypass __init__ shape ctor
+        nn.Module.__init__(obj)
+
+        obj.w1 = nn.Parameter(w1.detach().clone(), requires_grad=True)
+        obj.b1 = nn.Parameter(b1.detach().clone(), requires_grad=True)
+        obj.w2 = nn.Parameter(w2.detach().clone(), requires_grad=True)
+        obj.b2 = nn.Parameter(b2.detach().clone(), requires_grad=True)
+        return obj
+
+# Train one batch for multi-class 3 layer neural net
+def three_layer_nn(linear_act, non_linear_act, params, xb):
+    act1 = linear_act(xb, params.w1, params.b1)
+    act2 = non_linear_act(act1)
+    act3 = linear_act(act2, params.w2, params.b2)
+    return act3
+
+def train_one_epoch_3layer(linear_act, non_linear_act, params, lr, xb, yb):
+    # I think nn.Sequential is combining the 3 activations and their parameters into one, so the params can be passed onto optimizer as a whole
+    act3 = three_layer_nn(linear_act, non_linear_act, params, xb)
+    loss = F.cross_entropy(act3.as_subclass(torch.Tensor), yb.long().as_subclass(torch.Tensor), reduction='mean')
+    loss.backward()
+    # SGD update (in-place; do NOT rebind params.w*)
+    with torch.no_grad():
+        for p in (params.w1, params.b1, params.w2, params.b2):
+            if p.grad is not None:              # guard in case some param didn't get a grad
+                p.add_(p.grad, alpha=-lr)       # p -= lr * p.grad
+
+        # clear grads for next step
+        for p in (params.w1, params.b1, params.w2, params.b2):
+            p.grad = None                       # or: if p.grad is not None: p.grad.zero_()
+
+    return loss.item()
+
+def validate_one_epoch_3layer(linear_act, non_linear_act, params, valid_dl):
+    with torch.no_grad():
+        loss_agg = [F.cross_entropy(three_layer_nn(linear_act, non_linear_act, params, xb.view(-1, 28*28)).as_subclass(torch.Tensor),
+                                    yb.long().as_subclass(torch.Tensor), reduction='mean')
+                    for xb, yb in valid_dl]
+    return round(torch.stack(loss_agg).mean().item(), 4)

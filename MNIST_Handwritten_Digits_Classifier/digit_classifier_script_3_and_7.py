@@ -17,7 +17,7 @@ importlib.reload(bmo)
 # URLs is an object that stores all the URLs of datasets, in this tutorial we are going to use the  MNIST_SAMPLE and MINIST_TINY
 # let's define lists of path to images which will be used for data loading
 #path = untar_data(URLs.MNIST_SAMPLE) # Path('/Users/lcjh/.fastai/data/mnist_sample')
-path = Path('/Users/lcjh/.fastai/data/mnist_sample')
+path = Path.home()/ "fastai/data/mnist_sample"
 sevens = (path/'train'/'7').ls().sorted()
 threes = (path/'train'/'3').ls().sorted()
 valid_sevens = (path/'valid'/'7').ls().sorted()
