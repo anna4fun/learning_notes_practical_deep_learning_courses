@@ -150,13 +150,34 @@ param_map = {
 os.environ["PATH"] += os.pathsep + "/opt/homebrew/bin"
 g = viz.make_dot(ce_loss_final, params=param_map)
 g.render("MNIST_Handwritten_Digits_Classifier/3_layer_NN_computation_graph", format="png")
-# do I accumulate gradients across all batches in one epoch? no
-lr = 10
-print(b1)
-print(b2)
-with torch.no_grad():
-    w1 -= w1.grad * lr
-    b1 -= b1.grad * lr
-    w2 -= w2.grad * lr
-    b2 -= b2.grad * lr
+
+## Problem: all predicted labels are 8, why?
+## because every row in the final activation are the same
+xb,yb = dls.valid.one_batch()
+activation = bmo.three_layer_nn(bmo.linear1, torch.relu, parameters, x2)
+activation.shape
+valid_label = torch.argmax(activation, dim=1).view(-1)
+valid_label.long().as_subclass(torch.Tensor)
+yb.long().as_subclass(torch.Tensor)
+# is xb[0] and xb[1] the same?
+xb[0]
+xb[-1]
+xb.view(-1, 28*28)
+torch.equal(xb[0], xb[1]) # False
+torch.equal(activation[0], activation[1]) # True
+torch.equal(w1[0], w1[1]) # False
+w1.shape
+xb.shape, yb.shape
+act1 = bmo.linear1(xb.view(-1, 28*28), parameters.w1, parameters.b1)
+torch.equal(act1[0], act1[1]) # False
+act1[0] # all negative
+act1[1]
+act2 = torch.relu(act1)
+torch.equal(act2[0], act2[-1]) # True so this is creating the equals
+act2[0] # all zero
+act2[-1] # all zero
+# that’s the classic “dying ReLU” failure mode:
+# Too high LR can shove the first layer so negative it never recovers. change LR from 10 to 0.1
+# Use leaky Relu.
+
 
