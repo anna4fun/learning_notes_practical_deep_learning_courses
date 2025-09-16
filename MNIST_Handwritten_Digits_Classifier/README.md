@@ -16,14 +16,14 @@ and plays nicely with optimizers like SGD/Adam.
 6. last but not least, save all the outputs with a history of all the variations that I tried for more efficient experiments, let's look at the results
 
 #### Linear regression with built-in SGD optimizer
-![simple lr 1](results/training_results_linearReg.png)
+![simple lr 1](results/1_layer_linear_regression/training_results_linearReg.png)
 
 #### Linear regression with my own SGD optimizer
-![simple lr 2](results/training_results_linearReg_bmo_opt.png)
+![simple lr 2](results/1_layer_linear_regression/training_results_linearReg_bmo_opt.png)
 
 #### 3-layer Neural Net with ReLu as middle layer non-linear activation with different learning rates and epoch
-![simple nn 1](results/training_results.png)
-![simple nn 2](results/training_results2.png)
+![simple nn 1](results/1_layer_linear_regression/training_results.png)
+![simple nn 2](results/1_layer_linear_regression/training_results2.png)
 
 #### ❗❗❗ Why are the validation loss so zig-zag in the 2 NN training cycles? It looks pretty smooth in simple Linear Regression cycles.
 Also, the validation accuracy of NN is jumping within very small ranges (0.984, 0.985), is that normal?

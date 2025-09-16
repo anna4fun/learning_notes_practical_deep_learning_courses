@@ -63,10 +63,7 @@ valid_ground_truth=torch.stack(valid_ground_truth)
 dls.show_batch(max_n=9, nrows=3, figsize=(6,6))
 plt.show()
 
-gc.collect()
-torch.cuda.empty_cache()
-
-### Initialize parameters\
+### Initialize parameters
 w1 = bmo.init_params((28*28, 50), 1)
 b1 = bmo.init_params((1, 50), 1)
 w2 = bmo.init_params((50, 10), 1) # output dimension needs to be 10 to be mapped to the 10 digits
@@ -86,7 +83,9 @@ torch.cuda.empty_cache()
 # Print the formatted current time
 print("Current Time =", datetime.now().strftime("%H:%M:%S")) # 13:02:34
 
-for epoch in range(11, 20):
+lr = 0.1
+for epoch in range(10):
+    if epoch >= 5: lr = 0.01
     for batch, (xb, yb) in enumerate(dls.train, start=1):
         current_step = str(epoch) + '-' + str(batch)
         train_losses[current_step] = bmo.train_one_batch_3layer(bmo.linear1, nn.LeakyReLU(0.1), parameters, lr=0.1, xb=xb.view(xb.size(0), -1), yb=yb)
@@ -101,8 +100,8 @@ print("Current Time =", datetime.now().strftime("%H:%M:%S")) # Current Time = 13
 vis.plot_loss_and_accuracy(valid_losses, valid_accuracy,
                            savepath="MNIST_Handwritten_Digits_Classifier/results/10-digits-training-loss_and_accuracy_curve_02.png")
 
-vis.plot_losses(train_losses, valid_losses)
-plt.savefig("MNIST_Handwritten_Digits_Classifier/results/10-digits-training-loss_curve_01.png", dpi=200, bbox_inches="tight")
+plt = vis.plot_losses(train_losses, valid_losses)
+plt.savefig("MNIST_Handwritten_Digits_Classifier/results/10-digits-training-loss_curve_02.png", dpi=200, bbox_inches="tight")
 
 
 

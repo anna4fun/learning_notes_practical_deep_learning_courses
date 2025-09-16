@@ -162,4 +162,5 @@ def plot_losses(train_losses: dict, valid_losses: dict, title="Training & Valida
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
+    return(plt)
 
