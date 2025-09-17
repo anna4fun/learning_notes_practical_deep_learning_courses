@@ -181,3 +181,47 @@ act2[-1] # all zero
 # Use leaky Relu.
 
 
+## ChatGPT's solution to my 3-layer MLP
+# it's faster than my own solution
+# params as nn.Parameter so optimizers work correctly
+device = torch.device("mps" if torch.backends.mps.is_available()
+                      else "cuda" if torch.cuda.is_available()
+                      else "cpu")
+w1 = nn.Parameter(torch.empty(784, 50, device=device))
+b1 = nn.Parameter(torch.empty(50, device=device))
+w2 = nn.Parameter(torch.empty(50, 10, device=device))
+b2 = nn.Parameter(torch.empty(10, device=device))
+
+nn.init.kaiming_normal_(w1, nonlinearity='relu'); nn.init.constant_(b1, 0.01)
+nn.init.kaiming_normal_(w2, nonlinearity='relu'); nn.init.zeros_(b2)
+
+params = [w1, b1, w2, b2]
+opt = torch.optim.Adam(params, lr=1e-3)
+
+def forward(x):
+    x = x.view(x.size(0), -1)
+    x = (x - 0.1307) / 0.3081   # normalize
+    h = torch.nn.functional.leaky_relu(x @ w1 + b1, 0.01)
+    return h @ w2 + b2          # logits
+
+for epoch in range(5, 10):
+    # ---- train ----
+    for xb, yb in dls.train:
+        xb, yb = xb.to(device), yb.to(device).long()
+        opt.zero_grad(set_to_none=True)
+        loss = F.cross_entropy(forward(xb).as_subclass(torch.Tensor), yb.as_subclass(torch.Tensor))
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(params, 5.0)
+        opt.step()
+
+    # ---- validate ----
+    correct = total = 0
+    with torch.inference_mode():
+        for xb, yb in dls.valid:
+            xb, yb = xb.to(device), yb.to(device).long()
+            pred = forward(xb).argmax(1)
+            correct += (pred == yb).sum().item()
+            total += yb.numel()
+    acc = correct/total
+    print(f"epoch {epoch+1} acc={acc:.4f}")
+

@@ -7,6 +7,7 @@ from fastai.optimizer import Optimizer
 import os
 from PIL import Image
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
 
 for dirname, _, filenames in os.walk('/kaggle/input'):
     for filename in filenames:
@@ -264,3 +265,133 @@ def validate_one_epoch_accuracy(linear_act, non_linear_act, params, valid_dl, va
     (valid_predict_label == valid_ground_truth).sum().item()
     accuracy = round(1.0 * (valid_predict_label == valid_ground_truth).sum().item() / valid_ground_truth.shape[0], 4)
     return accuracy
+
+def evaluate_validation_and_show_misclassified(dls, show_n: int = 16, ncols: int = 4, device='mps', params=None,
+                                               save_dir: str = None,
+                                               mis_fname: str = "misclassified_samples.png",
+                                               cm_fname: str = "confusion_matrix.png",
+                                               save_dpi: int = 200
+                                               ):
+    """
+    - Runs the model on the validation dataloader
+    - Collects all misclassified samples (image, true, pred)
+    - Shows up to `show_n` misclassified images
+    - Plots a confusion matrix over all validation predictions
+    Returns:
+      dict with keys:
+        'all_targets', 'all_preds', 'mis_images', 'mis_true', 'mis_pred'
+    """
+    all_targets = []
+    all_preds = []
+    mis_images = []
+    mis_true = []
+    mis_pred = []
+    saved_paths = {'misclassified': None, 'confusion_matrix': None}
+
+    with torch.inference_mode():
+        for xb, yb in dls.valid:
+            xb = xb.to(device)
+            yb = yb.to(device).long()
+            # logits = _forward_current(xb)
+            logits = three_layer_nn(linear1, nn.LeakyReLU(0.1), params, xb.view(xb.size(0), -1))
+            pred = logits.argmax(dim=1)
+            # Coerce fastai tensor subclasses to base torch.Tensor for safe ops
+            pred_base = pred.long().as_subclass(torch.Tensor)
+            yb_base = yb.long().as_subclass(torch.Tensor)
+
+            all_targets.append(yb.detach().cpu())
+            all_preds.append(pred.detach().cpu())
+            # Robust misclassification selection via indices
+            # mask = torch.ne(pred, yb)  # ensure we get a tensor mask
+            mis_idx = (pred_base != yb_base).nonzero(as_tuple=False).squeeze(1)
+            if mis_idx.numel() > 0:
+                mis_images.append(xb.index_select(0, mis_idx).detach().cpu())
+                mis_true.append(yb_base.index_select(0, mis_idx).detach().cpu())
+                mis_pred.append(pred_base.index_select(0, mis_idx).detach().cpu())
+
+    # Concatenate
+    all_targets = torch.cat(all_targets, dim=0)
+    all_preds = torch.cat(all_preds, dim=0)
+    if len(mis_images):
+        mis_images = torch.cat(mis_images, dim=0)
+        mis_true = torch.cat(mis_true, dim=0)
+        mis_pred = torch.cat(mis_pred, dim=0)
+    else:
+        mis_images = torch.empty((0, 1, 28, 28))
+        mis_true = torch.empty((0,), dtype=torch.long)
+        mis_pred = torch.empty((0,), dtype=torch.long)
+
+    total = all_targets.numel()
+    correct = (all_targets == all_preds).sum().item()
+    acc = correct / total if total else 0.0
+    print(f"Validation: total={total}, correct={correct}, acc={acc:.4f}, misclassified={total - correct}")
+
+    # Ensure save_dir exists if provided
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+
+    # Show and/or save some misclassified images
+    if mis_images.shape[0] > 0 and show_n > 0:
+        n_show = min(show_n, mis_images.shape[0])
+        ncols = max(1, ncols)
+        nrows = int(np.ceil(n_show / ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(2.5 * ncols, 2.5 * nrows))
+        axes = np.array(axes).reshape(nrows, ncols)
+        for i in range(nrows * ncols):
+            r, c = divmod(i, ncols)
+            ax = axes[r, c]
+            ax.axis('off')
+            if i < n_show:
+                img = mis_images[i].squeeze(0).numpy()  # [1,28,28] -> [28,28]
+                ax.imshow(img, cmap='gray')
+                ax.set_title(f"pred={int(mis_pred[i])} / true={int(mis_true[i])}", fontsize=9)
+        plt.suptitle(f"Misclassified samples (showing {n_show} of {mis_images.shape[0]})")
+        plt.tight_layout()
+
+        if save_dir is not None:
+            mis_path = os.path.join(save_dir, mis_fname)
+            fig.savefig(mis_path, dpi=save_dpi, bbox_inches="tight")
+            saved_paths['misclassified'] = mis_path
+
+        plt.show()
+        plt.close(fig)
+    else:
+        print("No misclassified samples to display.")
+
+    # Confusion matrix
+    labels = list(range(10))  # digits 0..9
+    cm = confusion_matrix(all_targets.numpy(), all_preds.numpy(), labels=labels)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(cm, interpolation='nearest', cmap='Blues')
+    ax.figure.colorbar(im, ax=ax)
+    ax.set(
+        xticks=np.arange(len(labels)),
+        yticks=np.arange(len(labels)),
+        xticklabels=labels,
+        yticklabels=labels,
+        ylabel='True label',
+        xlabel='Predicted label',
+        title='Validation Confusion Matrix'
+    )
+    # Show counts in cells
+    thresh = cm.max() / 2.0 if cm.max() else 0.5
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    plt.tight_layout()
+    if save_dir is not None:
+        cm_path = os.path.join(save_dir, cm_fname)
+        fig.savefig(cm_path, dpi=save_dpi, bbox_inches="tight")
+        saved_paths['confusion_matrix'] = cm_path
+    plt.show()
+    plt.close(fig)
+
+    return {
+        'all_targets': all_targets,
+        'all_preds': all_preds,
+        'mis_images': mis_images,
+        'mis_true': mis_true,
+        'mis_pred': mis_pred,
+    }
