@@ -266,6 +266,11 @@ def validate_one_epoch_accuracy(linear_act, non_linear_act, params, valid_dl, va
     accuracy = round(1.0 * (valid_predict_label == valid_ground_truth).sum().item() / valid_ground_truth.shape[0], 4)
     return accuracy
 
+
+# decaying the learning rates as epochs increase
+def lr_factor(t):  # t = global step
+    return 0.5 ** (t // 2)
+
 def evaluate_validation_and_show_misclassified(dls, show_n: int = 16, ncols: int = 4, device='mps', params=None,
                                                save_dir: str = None,
                                                mis_fname: str = "misclassified_samples.png",

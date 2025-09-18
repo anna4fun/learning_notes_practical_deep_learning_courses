@@ -9,12 +9,16 @@ import gc
 import importlib
 import utils.learner_and_optimizer as bmo
 import utils.visualizers as vis
+import utils.activation_maximization as amo
+import utils.weights_inspection as wi
 import torch.nn.functional as F
 import torchviz as viz
 from fastai.losses import CrossEntropyLossFlat
 from datetime import datetime
 importlib.reload(bmo)
 importlib.reload(vis)
+importlib.reload(amo)
+importlib.reload(wi)
 
 ## Differences between binary classification and multi-label classification problems
 # 1. loss function needs to be cross-entropy: activation -> softmax -> negative log-likelihood
@@ -100,12 +104,7 @@ torch.cuda.empty_cache()
 print("Current Time =", datetime.now().strftime("%H:%M:%S")) # 14:00:32
 
 lr = 0.1 # epoch 0-19, max accuracy 0.948 plateu
-lr = 0.01
-# decaying the learning rates as epochs increase
-# def lr_factor(t):  # t = global step
-#     return 0.5 ** (t // 2)
-
-for epoch in range(20, 24):
+for epoch in range(8):
     for batch, (xb, yb) in enumerate(dls.train, start=1):
         current_step = str(epoch) + '-' + str(batch)
         train_losses[current_step] = bmo.train_one_batch_3layer(bmo.linear1, nn.LeakyReLU(0.1),
@@ -117,7 +116,7 @@ for epoch in range(20, 24):
     #                                                              parameters,
     #                                                              dls.valid,valid_ground_truth)
     ## Time to see which images are misclassified
-    if epoch in (0, 1, 5, 8, 14, 16, 19, 20, 23):
+    if epoch in (0, 1, 5, 8, 14):
         bmo.evaluate_validation_and_show_misclassified(dls, show_n=16, ncols=4, params=parameters,
                               save_dir = "MNIST_Handwritten_Digits_Classifier/results/3_layer_NN/set4/",
                               mis_fname=str(epoch) + "_misclassified.png",
@@ -133,12 +132,39 @@ plt = vis.plot_losses(train_losses, valid_losses)
 plt.savefig("MNIST_Handwritten_Digits_Classifier/results/3_layer_NN/set4-10-digits-training-loss_curve.png", dpi=200, bbox_inches="tight")
 
 
+# Let's visualize the activation of the hidden layer'
+# Example 1: maximize the logit for class '3'
+for digits in range(9):
+    res = amo.activation_maximize(
+        w1, b1, w2, b2,
+        target_type="class",
+        target_index=digits,
+        activation_fn=nn.LeakyReLU(0.1),
+        steps=400, lr=0.1, l2_weight=1e-3, tv_weight=1e-2, jitter_pixels=2, device=device
+    )
+    img = amo._to_display(res["image"])
+    plt.figure(figsize=(3, 3))
+    plt.imshow(img, cmap="gray")
+    plt.axis("off")
+    plt.title("Class " + str(digits) + " prototype")
+    plt.savefig("MNIST_Handwritten_Digits_Classifier/results/3_layer_NN/set4/activation_maximization/class" + str(
+        digits) + ".png", dpi=200, bbox_inches="tight")
 
-# Run the evaluation, show some mistakes and the confusion matrix
-eval = bmo.evaluate_validation_and_show_misclassified(dls, show_n=16, ncols=4, params=parameters
-                                                      ,save_dir="MNIST_Handwritten_Digits_Classifier/results/3_layer_NN/")
+"""
+What you’re looking at is not an “activation map” but a synthesized input image that your model “wants to see” to strongly activate the chosen class logit.
+How to interpret the image you saved
+- It’s an optimized input (constrained to [0,1] grayscale) that maximizes the class j logit under your L2 + total variation + jitter regularization.
+- White pixels ≈ “put ink here” (the model prefers these pixels to be on).
+- Black pixels ≈ “leave blank here” (the model prefers no ink there).
+- It is not showing neuron activations on a real image; it’s a prototype pattern. So “black = deactivated” is not the right mental model—black just means the optimized input didn’t place ink there.
 
+Important caveats
+- Not unique: Different random starts/regularization can yield different-looking prototypes.
+- Regularization matters: TV makes strokes smooth; stronger L2 can make strokes thinner and more faint.
+- Display min-max: If you min-max scale for display, absolute values don’t carry calibrated meaning—patterns do.
 
+Quick checks you can do
+- Consistency check: Run the optimization multiple times for the same class; you should get broadly similar strokes.
+- Feed back and score: Pass the synthesized image back through your network and print the logits/probabilities for the target class—they should be high.
 
-
-
+"""
