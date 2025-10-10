@@ -538,3 +538,97 @@ If it says `device='cpu'`, you're not using your GPU!
 You **absolutely have a GPU** (the M3's integrated GPU), but you need to explicitly use `.to("mps")` to take advantage of it. That's why your generation was so slow - PyTorch defaulted to CPU!
 
 Try the code above with `.to("mps")` and you should see a **dramatic speedup** (10-20x faster)! 🚀
+
+No, previous prompts are **not** being reused. The issue is different!
+
+## What's Happening
+
+Look at this line in your notebook:
+
+```python
+images = pipe(prompt=prompt, num_images_per_prompt=3, image=init_image, strength=0.8, num_inference_steps=50).images
+```
+
+
+The parameter **`num_images_per_prompt=3`** is telling the pipeline to generate **3 different variations** of the same prompt. This internally creates 3 copies of your prompt.
+
+So even though you wrote:
+```python
+prompt = "Wolf howling at the moon, photorealistic 4K"
+```
+
+
+The pipeline internally converts it to:
+```python
+[
+    "Wolf howling at the moon, photorealistic 4K",
+    "Wolf howling at the moon, photorealistic 4K", 
+    "Wolf howling at the moon, photorealistic 4K"
+]
+```
+
+
+## The Problem of 3 text prompts when runing the sketch -> image generation part
+
+You're providing:
+- **3 text prompts** (because `num_images_per_prompt=3`)
+- **1 initial image** (`init_image`)
+
+The warning is saying: "You want to generate 3 images from 3 prompts, but you only gave me 1 starting image. I'll duplicate it 3 times, but this behavior will change in the future."
+
+## Solutions
+
+### Solution 1: Keep Current Behavior (Generate 3 Variations)
+
+If you want 3 different variations from the same initial image, your code is fine. Just acknowledge that the initial image will be duplicated:
+
+```python
+# Current code - works but shows warning
+prompt = "Wolf howling at the moon, photorealistic 4K"
+images = pipe(
+    prompt=prompt, 
+    num_images_per_prompt=3,  # Generate 3 variations
+    image=init_image,          # Same starting image for all
+    strength=0.8, 
+    num_inference_steps=50
+).images
+```
+
+
+### Solution 2: Explicitly Duplicate the Image (Suppress Warning)
+
+Provide 3 copies of the initial image to match the 3 prompts:
+
+```python
+prompt = "Wolf howling at the moon, photorealistic 4K"
+images = pipe(
+    prompt=prompt, 
+    num_images_per_prompt=3,
+    image=[init_image, init_image, init_image],  # Explicitly provide 3 copies
+    strength=0.8, 
+    num_inference_steps=50
+).images
+```
+
+
+### Solution 3: Generate Only 1 Image (No Warning)
+
+If you only want 1 image, remove `num_images_per_prompt`:
+
+```python
+prompt = "Wolf howling at the moon, photorealistic 4K"
+image = pipe(
+    prompt=prompt, 
+    # num_images_per_prompt=3,  ← Remove this line
+    image=init_image,
+    strength=0.8, 
+    num_inference_steps=50
+).images[0]  # Note: .images[0] to get single image
+```
+
+
+## Key Point
+
+The "3 text prompts" doesn't mean you wrote 3 different prompts. It means the pipeline internally created 3 copies because you asked for 3 images with `num_images_per_prompt=3`.
+
+**The warning is just informing you** that in future versions, you'll need to explicitly provide multiple images if you want multiple outputs, rather than the pipeline automatically duplicating them for you.

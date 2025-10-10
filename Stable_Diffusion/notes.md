@@ -1,0 +1,12 @@
+# Questions when first go through the stable_diffusion notebook
+
+1. Why using half-precision (fp16) of the pre-trained weights creates no discernable quality of output images like the full-precision weights? When I trained the MLP, I remember GPT suggested I use half-precision as well, does that have the same root?
+2. funny, when I run the `pipe` for the first time, it loaded 4 components, including the VAE, UNet. I know that UNet is the U-shaped image + guidance -> noise process.
+3. the first time I run `pipe(prompt).images[0]` it gives a black image: a black image with `fp16` and `attention_slicing` indicates device compatibility issue, particularity on MPS, `torch.float16` on MPS backend can have numerical instability issues that results in NaN/Inf values throughout the computation, which eventualy produces a black image. 
+   4. Recommendation, use CPU(slow) or full-precision. (I choose full-precision)
+   5. Fallback: plan-B, for my case, the fallback plan is to automatically switch to CPU
+6. changing the seed while keeping the pipe and prompt the same, can generate different images, average time taken is around 60~90 seconds, it's pretty long. the progress bar shows 50/50 which I guess means 50 steps. 
+   7. with a fixed seed, the model will generate the same image, twitch the steps from (1, 3, 25, 50),  step 1 and 2 are black (aka pure noise), step 3 showing a piece of person and a horse under some background with replications of person's helmet(big jump improvements), step 25 have very similar image as step 50.
+   8. In both seeds' astronaut riding horse image generating process, the background is either desert or grass-field, meaning the background is more focus on the horse and no trace of space station which is often the background of astonaut. I guess when generating multiple major objects(horse and astronaut are usually the main characters of paintings on their own), one object will dominate the background fill. Or perhaps the training set of the model contains more horses, or more natural paintings(high frequency than space station), the model tend to fill the background with the higher frequent natural background. 
+   9. I switched the prompt to be "a photograph of 1st grade harry potter and his owl", Harry's eye looks weird and the owl is like paper cut
+ 
